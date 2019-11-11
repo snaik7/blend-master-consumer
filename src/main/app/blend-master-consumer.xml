@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:cluster="http://www.mulesoft.org/schema/mule/ee/cluster" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:spring="http://www.springframework.org/schema/beans" 
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
@@ -10,7 +10,10 @@ http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/htt
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
 http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
-    <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${mq.host}" virtualHost="${mq.virtualhost}" username="${mq.username}" password="${mq.password}" doc:name="AMQP-0-9 Connector"/>
+    <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${mq.host}" virtualHost="${mq.virtualhost}" username="${mq.username}" password="${mq.password}" doc:name="AMQP-0-9 Connector" ackMode="MANUAL"/>
+    <configuration defaultProcessingStrategy="synchronous" doc:name="Configuration">
+        <http:config useTransportForUris="false"/>
+    </configuration>
  
     <flow name="blend-master-consumerFlow" initialState="started">
         <amqp:inbound-endpoint queueName="queue.blend.event.master" responseTimeout="10000" exchange-pattern="one-way" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
@@ -29,12 +32,11 @@ payload]]></dw:set-payload>
         <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
          </when>
             <otherwise>
-                 <amqp:recover doc:name="AMQP-0-9 Recover"/>
+                <logger message="Error validating event" level="ERROR" doc:name="Logger"/>
             </otherwise>
         </choice>
            <catch-exception-strategy doc:name="Catch Exception Strategy">
-            <logger message="Error processing # #[flowVars['eventId']] #[message.payload]" level="ERROR" doc:name="Logger"/>
-            <amqp:recover doc:name="AMQP-0-9 Recover"/>
+            <logger message="Error processing # #[flowVars['eventId']] #[payload]" level="ERROR" doc:name="Logger"/>
         </catch-exception-strategy>
     </flow>
      <flow name="validate">
@@ -46,9 +48,9 @@ payload]]></dw:set-payload>
         </dw:transform-message>
         <set-variable variableName="eventId" value="#[payload['eventId']]" doc:name="Variable eventId"/>
           <set-variable variableName="queueName" value="#[&quot;queue.blend.event.&quot;+(payload['eventType']).toLowerCase()+&quot;.&quot;+(payload['message']['entityAction']).toLowerCase()]" doc:name="Variable queueName"/>
-        <set-variable variableName="validate" value="#[true]" doc:name="Variable validate"/>
+        <set-variable variableName="validate" value="#[flowVars['eventId'] == null ? false : true]" doc:name="Variable validate"/>
         <catch-exception-strategy doc:name="Catch Exception Strategy">
-            <logger level="ERROR" doc:name="Logger" message="Error validating event"/>
+            <logger level="ERROR" doc:name="Logger" message="Error validating event #[payload]"/>
              <set-variable variableName="validate" value="#[false]" doc:name="Variable validate"/>
         </catch-exception-strategy>
     </flow> 
